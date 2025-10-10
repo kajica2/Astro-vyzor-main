@@ -1,0 +1,8 @@
+{
+  "name": "Astro-Vysio",
+  "description": "A generative art application that creates unique, audio-reactive music videos from user-provided media, with an optional 'Astrological Engine' that uses real-time astronomical data to influence the visuals.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
