@@ -8,6 +8,7 @@ import { PerformancePanel } from './PerformancePanel';
 // FIX: Corrected import path for useAppState.
 import { useAppState } from '../context/AppStateContext';
 import { interpolateEffectLayers, interpolateEffectParameters } from '../utils/interpolation';
+import { audioSourceManager } from '../src/core/AudioSourceManager';
 
 const BEAT_DETECTION_HISTORY_SIZE = 120; // Approx. 2 seconds at 60fps
 const transitionTypesList = TRANSITION_DEFINITIONS.map(t => t.id).filter(t => t !== 'random') as Exclude<TransitionType, 'random'>[];
@@ -386,7 +387,7 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
             const context = new (window.AudioContext || (window as any).webkitAudioContext)();
             const analyser = context.createAnalyser(); analyser.fftSize = FFT_SIZE;
             if (micStream) { sourceRef.current = context.createMediaStreamSource(micStream); sourceRef.current.connect(analyser); } 
-            else if (audio) { audio.play().catch(e => console.error("Audio play failed:", e)); sourceRef.current = context.createMediaElementSource(audio); sourceRef.current.connect(analyser).connect(context.destination); } 
+            else if (audio) { audio.play().catch(e => console.error("Audio play failed:", e)); sourceRef.current = audioSourceManager.getOrCreateMediaElementSource(audio, context); sourceRef.current.connect(analyser).connect(context.destination); } 
             else return;
             audioContextRef.current = context; analyserRef.current = analyser;
             animationFrameId.current = requestAnimationFrame(animate);

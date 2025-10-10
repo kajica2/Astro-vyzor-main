@@ -20,6 +20,9 @@ export * from './RenderPipeline';
 // Plugin Development
 export * from './PluginSDK';
 
+// Audio Source Management
+export * from './AudioSourceManager';
+
 // Initialize core system
 import { EventBus, globalEventBus } from './EventBus';
 import { PluginManager, globalPluginManager } from './PluginManager';

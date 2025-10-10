@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import type { AudioProcessorProps, AudioAnalysisData } from '../../types/visualization';
+import { audioSourceManager } from '../../core/AudioSourceManager';
 
 export interface AudioProcessorHandle {
     start: () => Promise<void>;
@@ -164,7 +165,7 @@ export const AudioProcessor = forwardRef<AudioProcessorHandle, AudioProcessorPro
                 let sourceNode: AudioNode;
 
                 if (source instanceof HTMLAudioElement) {
-                    sourceNode = context.createMediaElementSource(source);
+                    sourceNode = audioSourceManager.getOrCreateMediaElementSource(source, context);
                     sourceNode.connect(analyser).connect(context.destination);
                 } else if (source instanceof MediaStream) {
                     sourceNode = context.createMediaStreamSource(source);

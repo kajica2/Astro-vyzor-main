@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import type { RecorderProps, RecordingConfig } from '../../types/visualization';
+import { audioSourceManager } from '../../core/AudioSourceManager';
 
 export interface HeadlessRecorderHandle {
     startRecording: () => Promise<void>;
@@ -70,7 +71,7 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
                         // Fallback: Try to create audio context and capture from there
                         try {
                             const audioContext = new AudioContext();
-                            const source = audioContext.createMediaElementSource(audioSource);
+                            const source = audioSourceManager.getOrCreateMediaElementSource(audioSource, audioContext);
                             const destination = audioContext.createMediaStreamDestination();
                             source.connect(destination);
                             source.connect(audioContext.destination);

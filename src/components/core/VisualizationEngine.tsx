@@ -7,6 +7,7 @@ import type {
 } from '../../types/visualization';
 import * as effects from '../../../utils/effects';
 import { FFT_SIZE, BEAT_COOLDOWN } from '../../../constants';
+import { audioSourceManager } from '../../core/AudioSourceManager';
 
 export interface VisualizationEngineHandle {
     start: () => void;
@@ -329,16 +330,7 @@ export const VisualizationEngine = forwardRef<VisualizationEngineHandle, Visuali
                 let source: AudioNode;
 
                 if (config.audioSource instanceof HTMLAudioElement) {
-                    // Check if this audio element already has a source
-                    const audioEl = config.audioSource as any;
-                    if (!audioEl._sourceConnected) {
-                        source = context.createMediaElementSource(config.audioSource);
-                        audioEl._sourceConnected = true;
-                    } else {
-                        // If already connected, skip creating a new source
-                        console.warn('Audio element already connected to a source, skipping...');
-                        return;
-                    }
+                    source = audioSourceManager.getOrCreateMediaElementSource(config.audioSource, context);
                     source.connect(analyser).connect(context.destination);
                 } else if (config.audioSource instanceof MediaStream) {
                     source = context.createMediaStreamSource(config.audioSource);

@@ -5,6 +5,7 @@
 
 import { EventBus, globalEventBus } from './EventBus';
 import { DependencyContainer } from './DependencyContainer';
+import { audioSourceManager } from './AudioSourceManager';
 
 export interface AudioAnalysisData {
     bass: number;
@@ -414,12 +415,7 @@ export class AudioEngine {
         try {
             // Create source node
             if (source instanceof HTMLMediaElement) {
-                // Check if already connected
-                const audioEl = source as any;
-                if (!audioEl._audioEngineConnected) {
-                    this.source = this.context!.createMediaElementSource(source);
-                    audioEl._audioEngineConnected = true;
-                }
+                this.source = audioSourceManager.getOrCreateMediaElementSource(source, this.context!);
             } else {
                 this.source = this.context!.createMediaStreamSource(source);
             }

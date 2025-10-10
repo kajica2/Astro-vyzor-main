@@ -9,6 +9,11 @@ Astro-Vysio is a web-based generative art application that creates unique, audio
 # Install dependencies
 npm install
 
+# Set up environment variables (optional - for AI features)
+# Create a .env file with your Gemini API key:
+# GEMINI_API_KEY=your_gemini_api_key_here
+# Get your API key from: https://aistudio.google.com/app/apikey
+
 # Run development server
 npm run dev
 
@@ -16,7 +21,7 @@ npm run dev
 npm run build
 ```
 
-Then open http://localhost:5173 in your browser.
+Then open http://localhost:3000 in your browser.
 
 ## 🆕 New: Reusable Components Library
 

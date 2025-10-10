@@ -3,7 +3,18 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { AudioProfile, EffectPreset, EffectParameters, EffectLayer, EffectType, TriggerSource, BlendMode } from '../types';
 import { DEFAULT_EFFECT_PARAMETERS } from "../constants";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// Initialize AI service only when API key is available
+let ai: GoogleGenAI | null = null;
+
+const initializeAI = () => {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
+  if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+    return true;
+  }
+  console.warn('Gemini API key not found. AI features will be disabled.');
+  return false;
+};
 
 // Define valid enums for the schema to guide the AI
 const EFFECT_TYPES: EffectType[] = ['none', 'strobe', 'grid', 'kaleidoscope', 'bloom', 'color_grading', 'glitch_slice', 'pixelate', 'invert', 'rgb_shift', 'liquid_dream'];
@@ -114,6 +125,10 @@ export const tunePresetsWithAI = async (
     presetB: EffectPreset,
     creativeDirection?: string
 ): Promise<{ tunedPresetBodyA: { layers: EffectLayer[], parameters: EffectParameters }, tunedPresetBodyB: { layers: EffectLayer[], parameters: EffectParameters } }> => {
+    // Initialize AI if not already done
+    if (!ai && !initializeAI()) {
+        throw new Error('AI service not available. Please set VITE_GEMINI_API_KEY environment variable.');
+    }
 
     const systemInstruction = `You are an expert VJ and music visualizer. Your task is to creatively remix two provided JSON visual effect presets to better match the described mood of an audio track. You must use the user's creative direction as the primary guide for your changes.
 

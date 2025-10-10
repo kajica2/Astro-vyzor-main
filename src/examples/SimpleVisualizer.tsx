@@ -4,6 +4,7 @@ import { HeadlessRecorder, HeadlessRecorderHandle } from '../components/core/Hea
 import type { VisualizationConfig, RecordingConfig, MediaElement } from '../types/visualization';
 import { RESOLUTIONS } from '../types/visualization';
 import { FFT_SIZE } from '../../constants';
+import { audioSourceManager } from '../core/AudioSourceManager';
 
 interface SimpleVisualizerProps {
     mediaFiles?: File[];
@@ -81,10 +82,11 @@ export const SimpleVisualizer: React.FC<SimpleVisualizerProps> = ({
     useEffect(() => {
         // Clean up previous audio element
         if (audioElementRef.current) {
-            const prevAudio = audioElementRef.current as any;
+            const prevAudio = audioElementRef.current;
             prevAudio.pause();
             prevAudio.src = '';
-            delete prevAudio._sourceConnected;
+            // Clean up using AudioSourceManager
+            audioSourceManager.cleanupElement(prevAudio);
             audioElementRef.current = null;
         }
 
@@ -100,8 +102,8 @@ export const SimpleVisualizer: React.FC<SimpleVisualizerProps> = ({
                 URL.revokeObjectURL(url);
                 audio.pause();
                 audio.src = '';
-                const audioEl = audio as any;
-                delete audioEl._sourceConnected;
+                // Clean up using AudioSourceManager
+                audioSourceManager.cleanupElement(audio);
                 audioElementRef.current = null;
             };
         }
