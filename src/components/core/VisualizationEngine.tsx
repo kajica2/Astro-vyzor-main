@@ -328,8 +328,25 @@ export const VisualizationEngine = forwardRef<VisualizationEngineHandle, Visuali
             }
 
             try {
+                console.log('[VisualizationEngine] Setting up audio...');
+
                 // Use shared context from AudioSourceManager
                 const context = audioSourceManager.getAudioContext();
+
+                // Check if element already has our analyser
+                if (config.audioSource instanceof HTMLAudioElement) {
+                    const elementAny = config.audioSource as any;
+                    if (elementAny._visualizationAnalyser &&
+                        (elementAny._visualizationAnalyser as any).context === context) {
+                        console.log('[VisualizationEngine] Reusing existing analyser from element');
+                        analyserRef.current = elementAny._visualizationAnalyser;
+                        audioContextRef.current = context;
+                        sourceRef.current = elementAny._audioSourceNode || null;
+                        if (onReady) onReady();
+                        return;
+                    }
+                }
+
                 const analyser = context.createAnalyser();
                 analyser.fftSize = config.audioConfig.fftSize || FFT_SIZE;
                 analyser.smoothingTimeConstant = config.audioConfig.smoothing || 0.8;
@@ -337,8 +354,25 @@ export const VisualizationEngine = forwardRef<VisualizationEngineHandle, Visuali
                 let source: AudioNode;
 
                 if (config.audioSource instanceof HTMLAudioElement) {
-                    source = audioSourceManager.getOrCreateMediaElementSource(config.audioSource, context);
-                    source.connect(analyser).connect(context.destination);
+                    console.log('[VisualizationEngine] Creating MediaElementSource...');
+                    try {
+                        source = audioSourceManager.getOrCreateMediaElementSource(config.audioSource, context);
+                        console.log('[VisualizationEngine] MediaElementSource created/retrieved');
+                    } catch (err) {
+                        console.error('[VisualizationEngine] Failed to get MediaElementSource:', err);
+                        throw err;
+                    }
+
+                    // Check if already connected
+                    const sourceAny = source as any;
+                    if (!sourceAny._vizConnected) {
+                        source.connect(analyser).connect(context.destination);
+                        sourceAny._vizConnected = true;
+                        (config.audioSource as any)._visualizationAnalyser = analyser;
+                        console.log('[VisualizationEngine] Connected source to analyser');
+                    } else {
+                        console.log('[VisualizationEngine] Source already connected');
+                    }
                 } else if (config.audioSource instanceof MediaStream) {
                     source = context.createMediaStreamSource(config.audioSource);
                     source.connect(analyser);
@@ -346,11 +380,12 @@ export const VisualizationEngine = forwardRef<VisualizationEngineHandle, Visuali
 
                 audioContextRef.current = context;
                 analyserRef.current = analyser;
-                sourceRef.current = source;
+                sourceRef.current = source!;
 
+                console.log('[VisualizationEngine] Audio setup completed');
                 if (onReady) onReady();
             } catch (error) {
-                console.error('Audio setup error:', error);
+                console.error('[VisualizationEngine] Audio setup error:', error);
                 if (onError) onError(error as Error);
             }
         }, [config.audioSource, config.audioConfig, onReady, onError]);
