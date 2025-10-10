@@ -309,20 +309,27 @@ export const VisualizationEngine = forwardRef<VisualizationEngineHandle, Visuali
         const setupAudio = useCallback(async () => {
             if (!config.audioSource) return;
 
-            // Clean up existing audio context first
-            if (audioContextRef.current) {
+            // Don't close the shared context, just disconnect our nodes
+            if (sourceRef.current) {
                 try {
-                    audioContextRef.current.close();
-                    audioContextRef.current = null;
+                    sourceRef.current.disconnect();
                     sourceRef.current = null;
+                } catch (e) {
+                    console.warn('Error disconnecting source:', e);
+                }
+            }
+            if (analyserRef.current) {
+                try {
+                    analyserRef.current.disconnect();
                     analyserRef.current = null;
                 } catch (e) {
-                    console.warn('Error cleaning up audio context:', e);
+                    console.warn('Error disconnecting analyser:', e);
                 }
             }
 
             try {
-                const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+                // Use shared context from AudioSourceManager
+                const context = audioSourceManager.getAudioContext();
                 const analyser = context.createAnalyser();
                 analyser.fftSize = config.audioConfig.fftSize || FFT_SIZE;
                 analyser.smoothingTimeConstant = config.audioConfig.smoothing || 0.8;
@@ -431,12 +438,12 @@ export const VisualizationEngine = forwardRef<VisualizationEngineHandle, Visuali
                 stop();
                 sourceRef.current?.disconnect();
                 analyserRef.current?.disconnect();
-                audioContextRef.current?.close().catch(console.error);
+                // Don't close the shared context, just cleanup our references
+                audioContextRef.current = null;
 
-                // Clean up the audio element marker
+                // Clean up the audio element using AudioSourceManager
                 if (config.audioSource instanceof HTMLAudioElement) {
-                    const audioEl = config.audioSource as any;
-                    delete audioEl._sourceConnected;
+                    audioSourceManager.cleanupElement(config.audioSource);
                 }
             };
         }, [setupAudio, autoStart, start, stop, config.audioSource]);

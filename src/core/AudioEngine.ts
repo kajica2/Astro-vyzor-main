@@ -378,7 +378,8 @@ export class AudioEngine {
         if (this.isInitialized) return;
 
         try {
-            this.context = new (window.AudioContext || (window as any).webkitAudioContext)();
+            // Use shared context from AudioSourceManager
+            this.context = audioSourceManager.getAudioContext();
 
             // Create analyser node
             this.analyser = this.context.createAnalyser();

@@ -157,7 +157,8 @@ export const AudioProcessor = forwardRef<AudioProcessorHandle, AudioProcessorPro
             if (audioContextRef.current) return;
 
             try {
-                const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+                // Use shared context from AudioSourceManager
+                const context = audioSourceManager.getAudioContext();
                 const analyser = context.createAnalyser();
                 analyser.fftSize = fftSize;
                 analyser.smoothingTimeConstant = smoothingTimeConstant;
@@ -305,7 +306,8 @@ export class StandaloneAudioProcessor {
     async start(fftSize: number = 2048, smoothingTimeConstant: number = 0.8): Promise<void> {
         if (this.audioContext) return;
 
-        const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+        // Use shared context from AudioSourceManager
+        const context = audioSourceManager.getAudioContext();
         const analyser = context.createAnalyser();
         analyser.fftSize = fftSize;
         analyser.smoothingTimeConstant = smoothingTimeConstant;
@@ -313,7 +315,7 @@ export class StandaloneAudioProcessor {
         let sourceNode: AudioNode;
 
         if (this.source instanceof HTMLAudioElement) {
-            sourceNode = context.createMediaElementSource(this.source);
+            sourceNode = audioSourceManager.getOrCreateMediaElementSource(this.source, context);
             sourceNode.connect(analyser).connect(context.destination);
         } else {
             sourceNode = context.createMediaStreamSource(this.source);

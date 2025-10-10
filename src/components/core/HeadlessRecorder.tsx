@@ -68,9 +68,9 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
                     } else if (typeof audioElement.mozCaptureStream === 'function') {
                         audioStream = audioElement.mozCaptureStream();
                     } else {
-                        // Fallback: Try to create audio context and capture from there
+                        // Fallback: Try to use shared audio context and capture from there
                         try {
-                            const audioContext = new AudioContext();
+                            const audioContext = audioSourceManager.getAudioContext();
                             const source = audioSourceManager.getOrCreateMediaElementSource(audioSource, audioContext);
                             const destination = audioContext.createMediaStreamDestination();
                             source.connect(destination);
