@@ -111,6 +111,8 @@ export interface RecordingConfig {
     format: string;
     quality?: number;
     includeAudio: boolean;
+    convertToMP4?: boolean;
+    onConversionProgress?: (progress: number) => void;
 }
 
 export interface AudioAnalysisData {
@@ -151,6 +153,7 @@ export interface RecorderProps {
     onStart?: () => void;
     onStop?: (blob: Blob) => void;
     onError?: (error: Error) => void;
+    onConversionProgress?: (progress: number) => void;
 }
 
 export interface CanvasRendererProps {

@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import type { RecorderProps, RecordingConfig } from '../../types/visualization';
 import { audioSourceManager } from '../../core/AudioSourceManager';
+import { mp4Converter } from '../../../services/mp4Converter';
 
 export interface HeadlessRecorderHandle {
     startRecording: () => Promise<void>;
@@ -10,14 +11,17 @@ export interface HeadlessRecorderHandle {
     isRecording: () => boolean;
     getRecordedBlob: () => Blob | null;
     downloadRecording: (filename?: string) => void;
+    convertRecordingToMP4: () => Promise<Blob | null>;
 }
 
 export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps>(
-    ({ canvas, audioSource, config, onStart, onStop, onError }, ref) => {
+    ({ canvas, audioSource, config, onStart, onStop, onError, onConversionProgress }, ref) => {
         const recorderRef = useRef<MediaRecorder | null>(null);
         const recordedChunksRef = useRef<Blob[]>([]);
         const recordedBlobRef = useRef<Blob | null>(null);
+        const convertedMP4BlobRef = useRef<Blob | null>(null);
         const isRecordingRef = useRef(false);
+        const isConvertingRef = useRef(false);
 
         // Supported recording formats with fallbacks
         const getOptimalFormat = useCallback((): string => {
@@ -167,7 +171,7 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
                 return null;
             }
 
-            return new Promise((resolve) => {
+            return new Promise(async (resolve) => {
                 const recorder = recorderRef.current;
                 if (!recorder) {
                     resolve(null);
@@ -175,16 +179,49 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
                 }
 
                 // Set up a one-time listener for when recording stops
-                recorder.onstop = () => {
+                recorder.onstop = async () => {
                     const format = getOptimalFormat();
                     const blob = new Blob(recordedChunksRef.current, { type: format });
                     recordedBlobRef.current = blob;
+                    convertedMP4BlobRef.current = null; // Reset converted blob
 
-                    if (onStop) {
-                        onStop(blob);
+                    // If convertToMP4 is enabled and the format is WebM, convert it
+                    if (config.convertToMP4 && format.includes('webm')) {
+                        try {
+                            isConvertingRef.current = true;
+                            const mp4Blob = await mp4Converter.convertWebMToMP4(blob, {
+                                quality: 'medium',
+                                onProgress: (progress) => {
+                                    if (onConversionProgress) {
+                                        onConversionProgress(progress);
+                                    }
+                                    if (config.onConversionProgress) {
+                                        config.onConversionProgress(progress);
+                                    }
+                                },
+                            });
+                            convertedMP4BlobRef.current = mp4Blob;
+                            isConvertingRef.current = false;
+
+                            if (onStop) {
+                                onStop(mp4Blob);
+                            }
+                            resolve(mp4Blob);
+                        } catch (error) {
+                            console.error('MP4 conversion failed, using original WebM:', error);
+                            isConvertingRef.current = false;
+                            // Fallback to original WebM blob
+                            if (onStop) {
+                                onStop(blob);
+                            }
+                            resolve(blob);
+                        }
+                    } else {
+                        if (onStop) {
+                            onStop(blob);
+                        }
+                        resolve(blob);
                     }
-
-                    resolve(blob);
                 };
 
                 if (recorder.state === 'recording') {
@@ -197,7 +234,7 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
                 isRecordingRef.current = false;
                 recorderRef.current = null;
             });
-        }, [getOptimalFormat, onStop]);
+        }, [getOptimalFormat, onStop, config, onConversionProgress]);
 
         const pauseRecording = useCallback(() => {
             const recorder = recorderRef.current;
@@ -221,15 +258,61 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
             return recordedBlobRef.current;
         }, []);
 
-        const downloadRecording = useCallback((filename?: string) => {
+        const convertRecordingToMP4 = useCallback(async (): Promise<Blob | null> => {
             const blob = recordedBlobRef.current;
+            if (!blob) {
+                console.warn('No recording available to convert');
+                return null;
+            }
+
+            // If already converted, return cached version
+            if (convertedMP4BlobRef.current) {
+                return convertedMP4BlobRef.current;
+            }
+
+            // Check if it's already MP4
+            if (blob.type.includes('mp4')) {
+                convertedMP4BlobRef.current = blob;
+                return blob;
+            }
+
+            // Convert WebM to MP4
+            try {
+                isConvertingRef.current = true;
+                const mp4Blob = await mp4Converter.convertWebMToMP4(blob, {
+                    quality: 'medium',
+                    onProgress: (progress) => {
+                        if (onConversionProgress) {
+                            onConversionProgress(progress);
+                        }
+                        if (config.onConversionProgress) {
+                            config.onConversionProgress(progress);
+                        }
+                    },
+                });
+                convertedMP4BlobRef.current = mp4Blob;
+                isConvertingRef.current = false;
+                return mp4Blob;
+            } catch (error) {
+                console.error('MP4 conversion failed:', error);
+                isConvertingRef.current = false;
+                if (onError) {
+                    onError(error as Error);
+                }
+                return null;
+            }
+        }, [config, onConversionProgress, onError]);
+
+        const downloadRecording = useCallback((filename?: string) => {
+            // Prefer converted MP4 if available, otherwise use original
+            const blob = convertedMP4BlobRef.current || recordedBlobRef.current;
             if (!blob) {
                 console.warn('No recording available to download');
                 return;
             }
 
-            const format = getOptimalFormat();
-            const extension = format.includes('mp4') ? 'mp4' : 'webm';
+            const isMP4 = convertedMP4BlobRef.current !== null || blob.type.includes('mp4');
+            const extension = isMP4 ? 'mp4' : 'webm';
             const defaultFilename = `recording-${new Date().toISOString().replace(/:/g, '-')}.${extension}`;
 
             const url = URL.createObjectURL(blob);
@@ -245,7 +328,7 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
                 URL.revokeObjectURL(url);
                 document.body.removeChild(a);
             }, 100);
-        }, [getOptimalFormat]);
+        }, []);
 
         useImperativeHandle(ref, () => ({
             startRecording,
@@ -254,7 +337,8 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
             resumeRecording,
             isRecording,
             getRecordedBlob,
-            downloadRecording
+            downloadRecording,
+            convertRecordingToMP4
         }), [
             startRecording,
             stopRecording,
@@ -262,7 +346,8 @@ export const HeadlessRecorder = forwardRef<HeadlessRecorderHandle, RecorderProps
             resumeRecording,
             isRecording,
             getRecordedBlob,
-            downloadRecording
+            downloadRecording,
+            convertRecordingToMP4
         ]);
 
         // This is a headless component, so no visual elements
@@ -281,6 +366,7 @@ export function createStandaloneRecorder(
     let recorder: MediaRecorder | null = null;
     let recordedChunks: Blob[] = [];
     let recordedBlob: Blob | null = null;
+    let convertedMP4Blob: Blob | null = null;
     let isRecording = false;
 
     const getOptimalFormat = (): string => {
@@ -364,17 +450,39 @@ export function createStandaloneRecorder(
         async stopRecording() {
             if (!isRecording || !recorder) return null;
 
-            return new Promise((resolve) => {
+            return new Promise(async (resolve) => {
                 if (!recorder) {
                     resolve(null);
                     return;
                 }
 
-                recorder.onstop = () => {
+                recorder.onstop = async () => {
                     const format = getOptimalFormat();
                     const blob = new Blob(recordedChunks, { type: format });
                     recordedBlob = blob;
-                    resolve(blob);
+                    convertedMP4Blob = null; // Reset converted blob
+
+                    // If convertToMP4 is enabled and the format is WebM, convert it
+                    if (config.convertToMP4 && format.includes('webm')) {
+                        try {
+                            const mp4Blob = await mp4Converter.convertWebMToMP4(blob, {
+                                quality: 'medium',
+                                onProgress: (progress) => {
+                                    if (config.onConversionProgress) {
+                                        config.onConversionProgress(progress);
+                                    }
+                                },
+                            });
+                            convertedMP4Blob = mp4Blob;
+                            resolve(mp4Blob);
+                        } catch (error) {
+                            console.error('MP4 conversion failed, using original WebM:', error);
+                            // Fallback to original WebM blob
+                            resolve(blob);
+                        }
+                    } else {
+                        resolve(blob);
+                    }
                 };
 
                 recorder.stop();
@@ -403,14 +511,51 @@ export function createStandaloneRecorder(
             return recordedBlob;
         },
 
-        downloadRecording(filename?: string) {
-            if (!recordedBlob) return;
+        async convertRecordingToMP4() {
+            if (!recordedBlob) {
+                console.warn('No recording available to convert');
+                return null;
+            }
 
-            const format = getOptimalFormat();
-            const extension = format.includes('mp4') ? 'mp4' : 'webm';
+            // If already converted, return cached version
+            if (convertedMP4Blob) {
+                return convertedMP4Blob;
+            }
+
+            // Check if it's already MP4
+            if (recordedBlob.type.includes('mp4')) {
+                convertedMP4Blob = recordedBlob;
+                return recordedBlob;
+            }
+
+            // Convert WebM to MP4
+            try {
+                const mp4Blob = await mp4Converter.convertWebMToMP4(recordedBlob, {
+                    quality: 'medium',
+                    onProgress: (progress) => {
+                        if (config.onConversionProgress) {
+                            config.onConversionProgress(progress);
+                        }
+                    },
+                });
+                convertedMP4Blob = mp4Blob;
+                return mp4Blob;
+            } catch (error) {
+                console.error('MP4 conversion failed:', error);
+                return null;
+            }
+        },
+
+        downloadRecording(filename?: string) {
+            // Prefer converted MP4 if available, otherwise use original
+            const blob = convertedMP4Blob || recordedBlob;
+            if (!blob) return;
+
+            const isMP4 = convertedMP4Blob !== null || blob.type.includes('mp4');
+            const extension = isMP4 ? 'mp4' : 'webm';
             const defaultFilename = `recording-${Date.now()}.${extension}`;
 
-            const url = URL.createObjectURL(recordedBlob);
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = filename || defaultFilename;

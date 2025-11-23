@@ -4,6 +4,8 @@ import type { ExportSettings } from '../types';
 
 interface ExportControlsProps {
     isRecording: boolean;
+    isConverting?: boolean;
+    conversionProgress?: number;
     onStart: (settings: ExportSettings) => void;
     onStop: () => void;
 }
@@ -20,12 +22,19 @@ const supportedFormats: { name: string; mimeType: string }[] = [
 });
 
 
-export const ExportControls: React.FC<ExportControlsProps> = ({ isRecording, onStart, onStop }) => {
+export const ExportControls: React.FC<ExportControlsProps> = ({ 
+    isRecording, 
+    isConverting = false, 
+    conversionProgress = 0,
+    onStart, 
+    onStop 
+}) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [settings, setSettings] = useState<ExportSettings>({
         resolution: 'auto',
         format: supportedFormats[0]?.mimeType || 'video/webm',
         framerate: 30,
+        convertToMP4: false,
     });
 
     const handleSettingChange = <K extends keyof ExportSettings>(key: K, value: ExportSettings[K]) => {
@@ -37,18 +46,40 @@ export const ExportControls: React.FC<ExportControlsProps> = ({ isRecording, onS
         setIsModalOpen(false);
     };
 
-    if (isRecording) {
+    if (isRecording || isConverting) {
         return (
-            <button
-                onClick={onStop}
-                className="absolute top-4 right-4 bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm hover:bg-white/20 transition-colors z-10 flex items-center gap-2"
-            >
-                <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                </span>
-                Stop Recording
-            </button>
+            <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+                {isConverting ? (
+                    <div className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="relative w-6 h-6">
+                                <div className="absolute inset-0 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-sm font-medium">Converting to MP4...</span>
+                                <span className="text-xs text-stone-400">{conversionProgress}%</span>
+                            </div>
+                        </div>
+                        <div className="mt-2 w-full bg-stone-700 rounded-full h-1.5">
+                            <div
+                                className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                                style={{ width: `${conversionProgress}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                ) : (
+                    <button
+                        onClick={onStop}
+                        className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm hover:bg-white/20 transition-colors flex items-center gap-2"
+                    >
+                        <span className="relative flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                        </span>
+                        Stop Recording
+                    </button>
+                )}
+            </div>
         );
     }
 
@@ -109,6 +140,29 @@ export const ExportControls: React.FC<ExportControlsProps> = ({ isRecording, onS
                                     <option value={30}>30 FPS</option>
                                     <option value={60}>60 FPS</option>
                                 </select>
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                                <div>
+                                    <label htmlFor="convert-to-mp4" className="text-sm font-medium text-stone-200">
+                                        Convert to MP4
+                                    </label>
+                                    <p className="text-xs text-stone-500 mt-1">
+                                        Automatically convert WebM to MP4 after recording (works in all browsers)
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSettingChange('convertToMP4', !settings.convertToMP4)}
+                                    className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-900 focus:ring-purple-500 ${
+                                        settings.convertToMP4 ? 'bg-purple-600' : 'bg-stone-700'
+                                    }`}
+                                >
+                                    <span
+                                        className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform duration-300 ${
+                                            settings.convertToMP4 ? 'translate-x-6' : 'translate-x-1'
+                                        }`}
+                                    />
+                                </button>
                             </div>
                         </div>
                         <div className="flex gap-4 mt-8">

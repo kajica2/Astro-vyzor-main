@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 // FIX: Corrected import path for types.
 import type { EffectTriggerPayload, TransitionType, ModulatableParam, EffectLayer, EffectParameters } from '../types';
 import { FFT_SIZE, BEAT_COOLDOWN, TRANSITION_DEFINITIONS, COLOR_PALETTES } from '../constants';
@@ -9,6 +9,7 @@ import { PerformancePanel } from './PerformancePanel';
 import { useAppState } from '../context/AppStateContext';
 import { interpolateEffectLayers, interpolateEffectParameters } from '../utils/interpolation';
 import { audioSourceManager } from '../src/core/AudioSourceManager';
+import { mp4Converter } from '../services/mp4Converter';
 
 const BEAT_DETECTION_HISTORY_SIZE = 120; // Approx. 2 seconds at 60fps
 const transitionTypesList = TRANSITION_DEFINITIONS.map(t => t.id).filter(t => t !== 'random') as Exclude<TransitionType, 'random'>[];
@@ -68,6 +69,8 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const [isConverting, setIsConverting] = useState(false);
+    const [conversionProgress, setConversionProgress] = useState(0);
     const audioRef = useRef<HTMLAudioElement>(null);
     const animationFrameId = useRef<number | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -344,7 +347,7 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
         animationFrameId.current = requestAnimationFrame(animate);
     }, []);
 
-    const handleStartRecording = useCallback((settings: { resolution: 'auto' | '1080p' | '720p' | '480p', format: string, framerate: 30 | 60 }) => {
+    const handleStartRecording = useCallback(async (settings: { resolution: 'auto' | '1080p' | '720p' | '480p', format: string, framerate: 30 | 60, convertToMP4?: boolean }) => {
         const mainCanvas = canvasRef.current; const audio = audioRef.current;
         if (!mainCanvas || (!audio && !micStream) || !('MediaRecorder' in window)) { alert('Video recording is not supported.'); return; }
         const resolutions = { 'auto': { width: mainCanvas.width, height: mainCanvas.height }, '1080p': { width: 1920, height: 1080 }, '720p': { width: 1280, height: 720 }, '480p': { width: 854, height: 480 },};
@@ -357,18 +360,62 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
         else if (audio) { const ac = audio as any; if (typeof ac.captureStream === 'function') { audioStream = ac.captureStream(); } else if (typeof ac.mozCaptureStream === 'function') { audioStream = ac.mozCaptureStream(); } }
         if (!audioStream) { alert('Could not capture audio source.'); return; }
         const combinedStream = new MediaStream([...videoStream.getVideoTracks(), ...audioStream.getAudioTracks()]);
-        try { recorderRef.current = new MediaRecorder(combinedStream, { mimeType: settings.format }); } 
-        catch (e) { console.error('MediaRecorder error:', e); alert(`Recording failed. Unsupported format: ${settings.format}.`); return; }
+        
+        // Always record as WebM for maximum compatibility, then convert if needed
+        const recordFormat = 'video/webm; codecs=vp9,opus';
+        try { recorderRef.current = new MediaRecorder(combinedStream, { mimeType: recordFormat }); } 
+        catch (e) { 
+            // Fallback to default WebM
+            try {
+                recorderRef.current = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+            } catch (e2) {
+                console.error('MediaRecorder error:', e2); 
+                alert(`Recording failed. Unsupported format.`); 
+                return;
+            }
+        }
         recordedChunksRef.current = [];
         recorderRef.current.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
-        recorderRef.current.onstop = () => {
-            const blob = new Blob(recordedChunksRef.current, { type: settings.format }); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
-            a.download = `astro-vysio-${new Date().toISOString().replace(/:/g, '-')}.${settings.format.includes('mp4') ? 'mp4' : 'webm'}`;
-            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.body.removeChild(a);
+        recorderRef.current.onstop = async () => {
+            const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+            
+            // Convert to MP4 if requested
+            let finalBlob = blob;
+            let extension = 'webm';
+            
+            if (settings.convertToMP4) {
+                try {
+                    setIsConverting(true);
+                    setConversionProgress(0);
+                    finalBlob = await mp4Converter.convertWebMToMP4(blob, {
+                        quality: 'medium',
+                        onProgress: (progress) => {
+                            setConversionProgress(progress);
+                        },
+                    });
+                    extension = 'mp4';
+                } catch (error) {
+                    console.error('MP4 conversion failed, using WebM:', error);
+                    // Fallback to WebM
+                } finally {
+                    setIsConverting(false);
+                    setConversionProgress(0);
+                }
+            }
+            
+            const url = URL.createObjectURL(finalBlob);
+            const a = document.createElement('a'); 
+            a.style.display = 'none'; 
+            a.href = url;
+            a.download = `astro-vysio-${new Date().toISOString().replace(/:/g, '-')}.${extension}`;
+            document.body.appendChild(a); 
+            a.click(); 
+            window.URL.revokeObjectURL(url); 
+            document.body.removeChild(a);
             recordedChunksRef.current = [];
         };
-        recorderRef.current.start(); dispatch({ type: 'SET_IS_RECORDING', payload: true });
+        recorderRef.current.start(); 
+        dispatch({ type: 'SET_IS_RECORDING', payload: true });
     }, [micStream, dispatch]);
 
     const handleStopRecording = useCallback(() => {
@@ -409,7 +456,13 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
             <canvas ref={canvasRef} className="w-full h-full" />
             {audioUrl && <audio ref={audioRef} src={audioUrl} key={audioUrl} crossOrigin="anonymous" />}
             <button onClick={onStop} className="absolute top-4 left-4 bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm hover:bg-white/20 transition-colors z-10">← Back to Setup</button>
-            <ExportControls isRecording={isRecording} onStart={handleStartRecording} onStop={handleStopRecording} />
+            <ExportControls 
+                isRecording={isRecording} 
+                isConverting={isConverting}
+                conversionProgress={conversionProgress}
+                onStart={handleStartRecording} 
+                onStop={handleStopRecording} 
+            />
             <PerformancePanel />
         </div>
     );

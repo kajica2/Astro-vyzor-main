@@ -22,6 +22,7 @@ import { useAppState } from './context/AppStateContext';
 import type { MediaElement } from './types';
 import { VisualOutputControls } from './components/VisualOutputControls';
 import { GlobalModulation } from './components/fx/GlobalModulation';
+import { StarsBackground } from './components/StarsBackground';
 
 const Section: React.FC<{ title: string; children: React.ReactNode, defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -180,11 +181,12 @@ const App: React.FC = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-stone-950 text-stone-200 font-sans">
+        <div className="min-h-screen bg-stone-950 text-stone-200 font-sans relative">
+            {!isPlaying && <StarsBackground starCount={300} speed={0.3} />}
             {isPlaying ? (
                 <Visualizer onStop={handleBackToSetup} />
             ) : (
-                <div className="container mx-auto p-4 lg:p-8">
+                <div className="container mx-auto p-4 lg:p-8 relative z-10">
                     <header className="text-center mb-8">
                         <h1 className="text-4xl lg:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 animate-pulse">
                             Astro-Vysio

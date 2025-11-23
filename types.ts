@@ -131,6 +131,7 @@ export type ExportSettings = {
     resolution: 'auto' | '1080p' | '720p' | '480p';
     format: string;
     framerate: 30 | 60;
+    convertToMP4?: boolean;
 };
 
 // --- MODULATION TYPES --- //
