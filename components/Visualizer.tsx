@@ -340,7 +340,11 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
         if (isRecording && offscreenCanvasRef.current) {
             const offscreenCtx = offscreenCanvasRef.current.getContext('2d');
             if (offscreenCtx) {
-                offscreenCtx.fillStyle = 'black'; offscreenCtx.fillRect(0, 0, offscreenCanvasRef.current.width, offscreenCanvasRef.current.height);
+                // 1. Fill with black as the base layer (handles any gaps
+                //    where source canvas hasn't drawn yet)
+                offscreenCtx.fillStyle = 'black';
+                offscreenCtx.fillRect(0, 0, offscreenCanvasRef.current.width, offscreenCanvasRef.current.height);
+                // 2. Draw main canvas ON TOP of the black layer
                 offscreenCtx.drawImage(canvas, 0, 0, offscreenCanvasRef.current.width, offscreenCanvasRef.current.height);
             }
         }
@@ -348,6 +352,17 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
     }, []);
 
     const handleStartRecording = useCallback(async (settings: { resolution: 'auto' | '1080p' | '720p' | '480p', format: string, framerate: 30 | 60, convertToMP4?: boolean }) => {
+        // Guard: prevent stomping an in-flight conversion
+        if (isConverting) {
+            console.warn('Cannot start recording while MP4 conversion is in progress');
+            alert('Please wait for the previous recording to finish converting.');
+            return;
+        }
+        // Guard: prevent double-start if MediaRecorder is already active
+        if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+            console.warn('MediaRecorder already active');
+            return;
+        }
         const mainCanvas = canvasRef.current; const audio = audioRef.current;
         if (!mainCanvas || (!audio && !micStream) || !('MediaRecorder' in window)) { alert('Video recording is not supported.'); return; }
         const resolutions = { 'auto': { width: mainCanvas.width, height: mainCanvas.height }, '1080p': { width: 1920, height: 1080 }, '720p': { width: 1280, height: 720 }, '480p': { width: 854, height: 480 },};
@@ -378,11 +393,11 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
         recorderRef.current.ondataavailable = e => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
         recorderRef.current.onstop = async () => {
             const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-            
+
             // Convert to MP4 if requested
             let finalBlob = blob;
             let extension = 'webm';
-            
+
             if (settings.convertToMP4) {
                 try {
                     setIsConverting(true);
@@ -395,28 +410,34 @@ export const Visualizer: React.FC<{ onStop: () => void }> = ({ onStop }) => {
                     });
                     extension = 'mp4';
                 } catch (error) {
-                    console.error('MP4 conversion failed, using WebM:', error);
+                    console.error('MP4 conversion failed, falling back to WebM:', error);
+                    alert('MP4 conversion failed — saving as WebM instead.');
                     // Fallback to WebM
+                    finalBlob = blob;
+                    extension = 'webm';
                 } finally {
                     setIsConverting(false);
                     setConversionProgress(0);
                 }
             }
-            
+
             const url = URL.createObjectURL(finalBlob);
-            const a = document.createElement('a'); 
-            a.style.display = 'none'; 
+            const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
             a.download = `astro-vysio-${new Date().toISOString().replace(/:/g, '-')}.${extension}`;
-            document.body.appendChild(a); 
-            a.click(); 
-            window.URL.revokeObjectURL(url); 
-            document.body.removeChild(a);
+            document.body.appendChild(a);
+            a.click();
+            // Defer revoke + remove so Firefox/Safari finish the download stream
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                if (a.parentNode) a.parentNode.removeChild(a);
+            }, 1000);
             recordedChunksRef.current = [];
         };
         recorderRef.current.start(); 
         dispatch({ type: 'SET_IS_RECORDING', payload: true });
-    }, [micStream, dispatch]);
+    }, [micStream, dispatch, isConverting]);
 
     const handleStopRecording = useCallback(() => {
         if (recorderRef.current?.state === 'recording') recorderRef.current.stop();

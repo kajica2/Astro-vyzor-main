@@ -40,8 +40,8 @@ class MP4Converter {
                     console.log(`[FFmpeg] Progress: ${percentage}%`);
                 });
 
-                // Load ffmpeg.wasm core
-                const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+                // Load ffmpeg.wasm core (pinned to match @ffmpeg/core in package.json)
+                const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
                 
                 await this.ffmpeg.load({
                     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
