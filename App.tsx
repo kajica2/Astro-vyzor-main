@@ -85,8 +85,11 @@ const App: React.FC = () => {
 
     // Effect to derive MediaElement array and audio URL from file state
     useEffect(() => {
-        const previousMediaElements = mediaElements;
+        // Cleanup function: revoke ONLY URLs we created and that are no longer
+        // referenced by the new state. Captured refs avoid the previous-code
+        // double-revoke race where previousAudioUrl could equal current.
         const previousAudioUrl = audioUrl;
+        const previousMediaElements = mediaElements;
 
         // Process audio file
         if (audioFile) {
@@ -105,7 +108,7 @@ const App: React.FC = () => {
             Promise.all(filePromises).then(fileElements => {
                 const finalElements: MediaElement[] = [];
                 let fileElementIndex = 0;
-                
+
                 let webcamElement: HTMLVideoElement | null = null;
                 if (webcamStream) {
                     webcamElement = document.createElement('video');
@@ -129,27 +132,31 @@ const App: React.FC = () => {
             }).catch(err => console.error("Error creating media elements from files:", err));
         }
 
-        // Cleanup function
+        // Cleanup function: runs BEFORE the next effect call and on unmount.
+        // Only revoke URLs we created and that are not still in use.
         return () => {
+            if (previousAudioUrl && previousAudioUrl.startsWith('blob:')) {
+                try { URL.revokeObjectURL(previousAudioUrl); } catch { /* already revoked */ }
+            }
             previousMediaElements.forEach(el => {
-                if ((el.tagName === 'VIDEO' || el.tagName === 'IMG') && el.src.startsWith('blob:')) {
-                    URL.revokeObjectURL(el.src);
+                if ((el.tagName === 'VIDEO' || el.tagName === 'IMG') && el.src?.startsWith('blob:')) {
+                    try { URL.revokeObjectURL(el.src); } catch { /* already revoked */ }
                 }
             });
-            if (previousAudioUrl?.startsWith('blob:')) {
-                URL.revokeObjectURL(previousAudioUrl);
-            }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visuals, audioFile, webcamStream, dispatch]);
 
-    // Save presets to local storage
+    // Save presets to local storage (debounced to avoid stringify on every render)
     useEffect(() => {
-        try {
-            localStorage.setItem('astro-vysio-presets', JSON.stringify(effectPresets));
-        } catch (error) {
-            console.error("Could not save presets to local storage", error);
-        }
+        const handle = setTimeout(() => {
+            try {
+                localStorage.setItem('astro-vysio-presets', JSON.stringify(effectPresets));
+            } catch (error) {
+                console.error("Could not save presets to local storage", error);
+            }
+        }, 400);
+        return () => clearTimeout(handle);
     }, [effectPresets]);
     
     // Update isReady state

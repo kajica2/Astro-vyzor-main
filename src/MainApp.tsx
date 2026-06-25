@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import App from '../App';
 import { Demo720p } from './examples/Demo720p';
 import { AppProvider } from '../context/AppStateContext';
 
 const MainApp: React.FC = () => {
     const [view, setView] = useState<'home' | 'original' | 'demo'>('home');
+
+    // Enter key on the home screen launches the Original App (the primary experience).
+    // Saves first-time users from having to click to discover what's actually behind the door.
+    useEffect(() => {
+        if (view !== 'home') return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Enter') setView('original');
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [view]);
 
     if (view === 'original') {
         return (
@@ -54,6 +65,7 @@ const MainApp: React.FC = () => {
                 }}>
                     <button
                         onClick={() => setView('original')}
+                        autoFocus
                         style={{
                             padding: '20px 40px',
                             fontSize: '18px',
@@ -76,9 +88,9 @@ const MainApp: React.FC = () => {
                         }}
                     >
                         <div>
-                            <strong>Original App</strong>
+                            <strong>Launch App</strong>
                             <div style={{ fontSize: '14px', marginTop: '5px', opacity: 0.8 }}>
-                                Full-featured visualizer with UI
+                                Full visualizer with controls — press Enter
                             </div>
                         </div>
                     </button>
